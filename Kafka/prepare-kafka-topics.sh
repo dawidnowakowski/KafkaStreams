@@ -1,8 +1,8 @@
 #!/bin/bash
 
-TOPICS=("flights-etl" "airport-anomalies")
+TOPICS=("flights-input" "airports-input" "flights-etl" "airports-anomalies")
 
-echo "Deleting existing topics"
+echo "Deleting (existing) topics"
 for topic in "${TOPICS[@]}"; do
   /opt/kafka/bin/kafka-topics.sh \
     --bootstrap-server broker-1:19092 \
