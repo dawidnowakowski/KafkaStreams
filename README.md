@@ -29,3 +29,7 @@ cd /home/appuser
 10. Załaduj dane w tematach Kafki, najpierw informacje o lotniskach, które musimy odczytać przed rozpoczęciem rejestrowania zdarzeń \
 ./load-airports.sh
 
+11. Następnie uruchom przetwarzanie:
+
+12. Teraz czas na uruchomienie generowania zdarzeń o lotach:
+./load-flights.sh
