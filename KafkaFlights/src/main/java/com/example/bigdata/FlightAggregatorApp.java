@@ -1,10 +1,78 @@
 package com.example.bigdata;
 
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.Produced;
+
+import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+
+/*
+aggregate for (day, state) should contain:
+number of departures
+sum of departures delays
+number of arrivals
+sum of arrivals delays
+ */
+
+
+/*
+anomalies: each 10 minutes report airports to which in span of next D minutes >= N airplanes will arrive
+report should contain:
+windows boundaries
+airport's name
+airport's IATA
+airport's city
+airport's state
+number of airplanes arriving in next D minutes
+number of all airplanes in the sky flying to this airport
+ */
+
+// "flights-input" "airports-input" "flights-etl" "airports-anomalies"
+// first record might not be data but column headers
 
 
 public class FlightAggregatorApp {
     public static void main(String[] args) {
+        Properties config = new Properties();
+        config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, args[0]);
+        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "kafka-flights");
+        config.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+        config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+//        config.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, TimeExtractor.class);
 
+        final StreamsBuilder builder = new StreamsBuilder();
+
+        KStream<String, String> airports = builder.stream("airports-input");
+        airports.peek((key, value) -> System.out.println("Received message -> Key: " + key + ", Value: " + value));
+        airports.to("airports-anomalies", Produced.with(Serdes.String(), Serdes.String()));
+
+        final Topology topology = builder.build();
+        System.out.println(topology.describe());
+
+        KafkaStreams streams = new KafkaStreams(topology, config);
+
+
+        final CountDownLatch latch = new CountDownLatch(1);
+
+        Runtime.getRuntime().addShutdownHook(new Thread("streams-shutdown-hook") {
+            @Override
+            public void run() {
+                streams.close();
+                latch.countDown();
+            }
+        });
+
+        try {
+            streams.start();
+            latch.await();
+        } catch (Throwable e) {
+            System.exit(1);
+        }
+        System.exit(0);
     }
 }

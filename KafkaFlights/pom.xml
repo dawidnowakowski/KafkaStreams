@@ -29,7 +29,7 @@
     </dependencies>
 
     <build>
-        <finalName>alert-requests-kafka-streams</finalName>
+        <finalName>kafka-flights</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

@@ -16,7 +16,7 @@ docker exec --workdir /home/appuser -it broker-1 bash
 ./prepare-kafka-topics.sh \
 (usuwanie nieistniejących tematów spowoduje błędy, zignoruj je)
 
-7. Wyświetl dostępną listę tematów (nie powinna być pusta) \
+7. (opcjonalne) Wyświetl dostępną listę tematów (nie powinna być pusta) \
 cd /opt/kafka/bin/ \
 ./kafka-topics.sh --bootstrap-server broker-1:19092,broker-2:19092 --list
 
@@ -30,6 +30,18 @@ cd /home/appuser
 ./load-airports.sh
 
 11. Następnie uruchom przetwarzanie:
+java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 
 
 12. Teraz czas na uruchomienie generowania zdarzeń o lotach:
-./load-flights.sh
+./load-flights.sh \
+
+
+
+additional commands
+
+docker exec --workdir /opt/kafka/bin -it broker-1 bash
+
+./kafka-console-consumer.sh --bootstrap-server broker-1:19092 --topic airports-anomalies --from-beginning --property print.key=true --property print.value=true --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer --property value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+
+
+./kafka-console-consumer.sh --bootstrap-server broker-1:19092 --topic airports-input --from-beginning --property print.key=true --property print.value=true --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer --property value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
