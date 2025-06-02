@@ -26,7 +26,8 @@ cd /home/appuser
 ./download-data.sh
 
 9. Następnie uruchom przetwarzanie:
-java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 
+./run-processing.sh \
+(alternatywnie) java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 
 
 10. Załaduj dane w tematach Kafki, najpierw informacje o lotniskach, które musimy odczytać przed rozpoczęciem rejestrowania zdarzeń \
 ./load-airports.sh 
