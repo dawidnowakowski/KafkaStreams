@@ -6,6 +6,7 @@ import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Produced;
 
 import java.util.Properties;
@@ -47,9 +48,19 @@ public class FlightAggregatorApp {
 
         final StreamsBuilder builder = new StreamsBuilder();
 
-        KStream<String, String> airports = builder.stream("airports-input");
-        airports.peek((key, value) -> System.out.println("Received message -> Key: " + key + ", Value: " + value));
-        airports.to("airports-anomalies", Produced.with(Serdes.String(), Serdes.String()));
+        // logic goes here
+
+        KTable<String, String> airportsTable = builder.table("airports-input");
+        airportsTable.toStream().peek((key, value) ->
+                System.out.println("[KTable] Airport key: " + key + ", value: " + value));
+
+
+        KStream<String, String> flightsStream = builder.stream("flights-input");
+        flightsStream.peek((key, value) ->
+                System.out.println("[KStream] Flight key: " + key + ", value: " + value));
+
+        // logic ends here
+
 
         final Topology topology = builder.build();
         System.out.println(topology.describe());

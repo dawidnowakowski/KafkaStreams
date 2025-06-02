@@ -1,7 +1,9 @@
 package com.example.bigdata.model;
 
 import java.io.Serializable;
-import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -32,7 +34,7 @@ public class FlightRecord implements Serializable {
     }
 
     public static FlightRecord parseFromLogLine(String line) {
-        String[] parts = line.split(",", -1);
+        String[] parts = line.split(",");
         if (parts.length < 24) {
             logger.log(Level.WARNING, "Invalid flight line: " + line);
             throw new RuntimeException("Invalid flight record: " + line);
@@ -45,8 +47,8 @@ public class FlightRecord implements Serializable {
                 parts[8],   // scheduled arrival
                 parts[9],   // real departure
                 parts[13],  // real arrival
-                parts[21],  // event time (UTC)
-                parts[23]   // info type: A/D/C
+                parts[23],  // event time (UTC)
+                parts[24]   // info type: A/D/C
         );
     }
 
@@ -63,7 +65,9 @@ public class FlightRecord implements Serializable {
 
     public long getTimestampInMillis() {
         try {
-            return Instant.parse(orderColumn).toEpochMilli(); // we are assuming that all ts are in UTC
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            LocalDateTime dateTime = LocalDateTime.parse(orderColumn, formatter);
+            return dateTime.atZone(ZoneId.of("UTC")).toInstant().toEpochMilli();
         } catch (Exception e) {
             logger.log(Level.WARNING, "Invalid timestamp: " + orderColumn);
             return -1;
