@@ -1,20 +1,20 @@
 #!/bin/bash
 
 # loty
-mkdir -p kafka-flights
-cd kafka-flights
+# mkdir -p kafka-flights
+# cd kafka-flights
 
-ZIP_URL="http://www.cs.put.poznan.pl/kjankiewicz/bigdata/stream_project/flights-2015.zip"
-ZIP_FILE="flights-2015.zip"
+# ZIP_URL="http://www.cs.put.poznan.pl/kjankiewicz/bigdata/stream_project/flights-2015.zip"
+# ZIP_FILE="flights-2015.zip"
 
-echo "Downloading flight data from $ZIP_URL"
-wget -O "$ZIP_FILE" "$ZIP_URL"
+# echo "Downloading flight data from $ZIP_URL"
+# wget -O "$ZIP_FILE" "$ZIP_URL"
 
-echo "Unzipping $ZIP_FILE"
-unzip -o "$ZIP_FILE"
-rm "$ZIP_FILE"
+# echo "Unzipping $ZIP_FILE"
+# unzip -o "$ZIP_FILE"
+# rm "$ZIP_FILE"
 
-cd ..
+# cd ..
 
 # lotniska
 mkdir -p kafka-airports

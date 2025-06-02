@@ -18,21 +18,21 @@ docker exec --workdir /home/appuser -it broker-1 bash
 
 7. (opcjonalne) Wyświetl dostępną listę tematów (nie powinna być pusta) \
 cd /opt/kafka/bin/ \
-./kafka-topics.sh --bootstrap-server broker-1:19092,broker-2:19092 --list
-
-8. Powróć do katalogu domowego \
+./kafka-topics.sh --bootstrap-server broker-1:19092,broker-2:19092 --list \
 cd /home/appuser
 
-9. Pobierz dane przy użyciu skryptu: \
+
+8. Pobierz dane przy użyciu skryptu: \
 ./download-data.sh
 
-10. Załaduj dane w tematach Kafki, najpierw informacje o lotniskach, które musimy odczytać przed rozpoczęciem rejestrowania zdarzeń \
-./load-airports.sh
-
-11. Następnie uruchom przetwarzanie:
+9. Następnie uruchom przetwarzanie:
 java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 
 
-12. Teraz czas na uruchomienie generowania zdarzeń o lotach:
+10. Załaduj dane w tematach Kafki, najpierw informacje o lotniskach, które musimy odczytać przed rozpoczęciem rejestrowania zdarzeń \
+./load-airports.sh 
+
+
+11. Teraz czas na uruchomienie generowania zdarzeń o lotach:
 ./load-flights.sh \
 
 
