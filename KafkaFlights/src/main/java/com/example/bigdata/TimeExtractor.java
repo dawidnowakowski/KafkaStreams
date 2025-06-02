@@ -13,10 +13,10 @@ public class TimeExtractor implements TimestampExtractor {
                     FlightRecord flight = FlightRecord.parseFromLogLine((String) record.value());
                     return flight.getTimestampInMillis();
                 } catch (Exception e) {
-                    return previousTimestamp;
+                    return previousTimestamp >= 0 ? previousTimestamp : System.currentTimeMillis();
                 }
             }
         }
-        return previousTimestamp;
+        return System.currentTimeMillis();
     }
 }
