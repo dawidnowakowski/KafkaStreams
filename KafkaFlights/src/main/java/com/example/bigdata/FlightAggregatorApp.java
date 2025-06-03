@@ -38,7 +38,13 @@ number of all airplanes in the sky flying to this airport
 
 
 public class FlightAggregatorApp {
+    private final static String AIRPORTS_INPUT = "airports-input";
+    private final static String FLIGHTS_INPUT = "flights-input";
+    private final static String DAY_STATE_AGG = "flights-etl";
+    private final static String ANOMALIES = "airports-anomalies";
     public static void main(String[] args) {
+
+
         Properties config = new Properties();
         config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, args[0]);
         config.put(StreamsConfig.APPLICATION_ID_CONFIG, "kafka-flights");
@@ -50,12 +56,12 @@ public class FlightAggregatorApp {
 
         // logic goes here
 
-        KTable<String, String> airportsTable = builder.table("airports-input");
+        KTable<String, String> airportsTable = builder.table(AIRPORTS_INPUT);
         airportsTable.toStream().peek((key, value) ->
                 System.out.println("[KTable] Airport key: " + key + ", value: " + value));
 
 
-        KStream<String, String> flightsStream = builder.stream("flights-input");
+        KStream<String, String> flightsStream = builder.stream(FLIGHTS_INPUT);
         flightsStream.peek((key, value) ->
                 System.out.println("[KStream] Flight key: " + key + ", value: " + value));
 
