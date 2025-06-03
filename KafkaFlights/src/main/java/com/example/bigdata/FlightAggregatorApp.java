@@ -71,10 +71,11 @@ public class FlightAggregatorApp {
                 .mapValues(AirportRecord::parseFromLine)
                 .selectKey((oldKey, airport) -> airport.getIata())
                 .toTable(Materialized.with(Serdes.String(), airportSerde));
-        airportKTable.toStream().peek((key, value) -> System.out.println("Key: " + key + " Value: " + value));
+//        airportKTable.toStream().peek((key, value) -> System.out.println("Key: " + key + " Value: " + value));
 
 
         KStream<String, String> flightsStream = builder.stream(FLIGHTS_INPUT);
+
         KStream<String, FlightRecord> filteredFlights = flightsStream
                 .filter((key, value) -> FlightRecord.lineIsCorrect(value))
                 .mapValues(FlightRecord::parseFromLogLine)
@@ -82,10 +83,17 @@ public class FlightAggregatorApp {
                     String type = flight.getInfoType();
                     return type.equals("A") || type.equals("D");
                 });
-//        filteredFlights.peek((key, value) -> {
-//            System.out.println(key + " : " + value);
-//        });
+//        filteredFlights.peek((key, value) -> {System.out.println(key + " : " + value);});
 
+        KStream<String, FlightRecord> keyedFlights = filteredFlights
+                .selectKey((oldKey, flight) -> {
+                    if (flight.getInfoType().equals("D")) {
+                        return flight.getStartAirport();
+                    } else {
+                        return flight.getDestAirport();
+                    }
+                });
+//        keyedFlights.peek((key, value) -> System.out.printf("Key: %s, Value: %s\n", key, value));
 
         // logic ends here
 
