@@ -1,5 +1,7 @@
 package com.example.bigdata.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -65,7 +67,7 @@ public class FlightRecord implements Serializable {
         return parts.length >= 24;
     }
 
-
+    @JsonIgnore
     public long getTimestampInMillis() {
         try {
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

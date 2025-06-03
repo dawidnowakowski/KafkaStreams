@@ -1,6 +1,7 @@
 package com.example.bigdata;
 
 import com.example.bigdata.model.AirportRecord;
+import com.example.bigdata.model.FlightEventForAggregation;
 import com.example.bigdata.model.FlightRecord;
 import com.example.bigdata.serde.JsonSerde;
 import org.apache.kafka.common.serialization.Serde;
@@ -11,6 +12,9 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.*;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 
@@ -57,7 +61,9 @@ public class FlightAggregatorApp {
 
         // logic goes here
 
+        Serde<FlightRecord> flightSerde = new JsonSerde<>(FlightRecord.class);
         Serde<AirportRecord> airportSerde = new JsonSerde<>(AirportRecord.class);
+
 
 
         KStream<String, String> airportsRawStream = builder.stream(
@@ -95,6 +101,29 @@ public class FlightAggregatorApp {
                 });
 //        keyedFlights.peek((key, value) -> System.out.printf("Key: %s, Value: %s\n", key, value));
 
+        KStream<String, FlightEventForAggregation> enrichedStream = keyedFlights.join(
+                airportKTable,
+                (flight, airport) -> {
+                    String state = airport.getState();
+                    String dateStr;
+                    long delay;
+
+                    if (flight.getInfoType().equals("D")) {
+                        dateStr = flight.getDepartureTime().split(" ")[0];
+                        delay = calculateDelayMinutes(flight.getScheduledDepartureTime(), flight.getDepartureTime());
+                    } else {
+                        dateStr = flight.getArrivalTime().split(" ")[0];
+                        delay = calculateDelayMinutes(flight.getScheduledArrivalTime(), flight.getArrivalTime());
+                    }
+
+                    return new FlightEventForAggregation(state, dateStr, flight.getInfoType(), delay);
+                },
+                Joined.with(Serdes.String(), flightSerde, airportSerde)
+        );
+
+        enrichedStream.peek((key, value) -> System.out.printf("%s: %s\n", key, value));
+
+
         // logic ends here
 
 
@@ -122,4 +151,17 @@ public class FlightAggregatorApp {
         }
         System.exit(0);
     }
+
+    private static long calculateDelayMinutes(String scheduled, String actual) {
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            LocalDateTime sched = LocalDateTime.parse(scheduled, formatter);
+            LocalDateTime act = LocalDateTime.parse(actual, formatter);
+            long diff = Duration.between(sched, act).toMinutes();
+            return Math.max(0, diff);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
 }

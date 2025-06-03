@@ -10,7 +10,7 @@ docker compose up -d
 4. Poczekaj, aż wszystkie kontenery wstaną
  
 5. Wykonaj \
-docker exec --workdir /home/appuser -it broker-1 bash
+docker exec --workdir /home/appuser -it --user root broker-1 bash
 
 6. Na początek upewnij się, że odpowiednie tematy są utworzone, wykonując polecenie: \
 ./prepare-kafka-topics.sh \
