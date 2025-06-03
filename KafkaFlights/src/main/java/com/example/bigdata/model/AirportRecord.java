@@ -22,6 +22,9 @@ public class AirportRecord implements Serializable {
         this.timezone = timezone;
     }
 
+    public AirportRecord() {
+    }
+
     public static AirportRecord parseFromLine(String line) {
         String[] parts = line.split(",", -1);
         if (parts.length < 14) {

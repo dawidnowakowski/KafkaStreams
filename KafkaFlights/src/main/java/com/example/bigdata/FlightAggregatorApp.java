@@ -1,14 +1,15 @@
 package com.example.bigdata;
 
+import com.example.bigdata.model.AirportRecord;
 import com.example.bigdata.model.FlightRecord;
+import com.example.bigdata.serde.JsonSerde;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
-import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.KTable;
-import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.*;
 
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -43,9 +44,8 @@ public class FlightAggregatorApp {
     private final static String FLIGHTS_INPUT = "flights-input";
     private final static String DAY_STATE_AGG = "flights-etl";
     private final static String ANOMALIES = "airports-anomalies";
+
     public static void main(String[] args) {
-
-
         Properties config = new Properties();
         config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, args[0]);
         config.put(StreamsConfig.APPLICATION_ID_CONFIG, "kafka-flights");
@@ -57,8 +57,22 @@ public class FlightAggregatorApp {
 
         // logic goes here
 
-        KTable<String, String> airportsTable = builder.table(AIRPORTS_INPUT);
-//        airportsTable.toStream().peek((key, value) -> System.out.println("key: " + key + " value: " + value));
+        Serde<AirportRecord> airportSerde = new JsonSerde<>(AirportRecord.class);
+
+
+        KStream<String, String> airportsRawStream = builder.stream(
+                AIRPORTS_INPUT,
+                Consumed.with(Serdes.String(), Serdes.String())
+        );
+//        airportsRawStream.peek((key, value) -> System.out.println("Airport: " + key));
+
+        KTable<String, AirportRecord> airportKTable = airportsRawStream
+                .filter((key, value) -> AirportRecord.lineIsCorrect(value))
+                .mapValues(AirportRecord::parseFromLine)
+                .selectKey((oldKey, airport) -> airport.getIata())
+                .toTable(Materialized.with(Serdes.String(), airportSerde));
+        airportKTable.toStream().peek((key, value) -> System.out.println("Key: " + key + " Value: " + value));
+
 
         KStream<String, String> flightsStream = builder.stream(FLIGHTS_INPUT);
         KStream<String, FlightRecord> filteredFlights = flightsStream

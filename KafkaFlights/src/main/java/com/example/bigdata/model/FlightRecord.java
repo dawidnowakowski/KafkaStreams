@@ -20,6 +20,9 @@ public class FlightRecord implements Serializable {
     private String orderColumn;  // UTC timestamp
     private String infoType;
 
+    public FlightRecord() {
+    }
+
     private FlightRecord(String startAirport, String destAirport, String scheduledDepartureTime,
                          String scheduledArrivalTime, String departureTime, String arrivalTime,
                          String orderColumn, String infoType) {

@@ -9,7 +9,7 @@ for topic in "${TOPICS[@]}"; do
     --delete --topic "$topic" || echo "Topic $topic doesn't exist"
 done
 
-sleep 5
+sleep 1
 
 echo "Creating topics"
 for topic in "${TOPICS[@]}"; do
