@@ -1,5 +1,6 @@
 package com.example.bigdata;
 
+import com.example.bigdata.model.FlightRecord;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -57,13 +58,20 @@ public class FlightAggregatorApp {
         // logic goes here
 
         KTable<String, String> airportsTable = builder.table(AIRPORTS_INPUT);
-        airportsTable.toStream().peek((key, value) ->
-                System.out.println("[KTable] Airport key: " + key + ", value: " + value));
-
+//        airportsTable.toStream().peek((key, value) -> System.out.println("key: " + key + " value: " + value));
 
         KStream<String, String> flightsStream = builder.stream(FLIGHTS_INPUT);
-        flightsStream.peek((key, value) ->
-                System.out.println("[KStream] Flight key: " + key + ", value: " + value));
+        KStream<String, FlightRecord> filteredFlights = flightsStream
+                .filter((key, value) -> FlightRecord.lineIsCorrect(value))
+                .mapValues(FlightRecord::parseFromLogLine)
+                .filter((key, flight) -> {
+                    String type = flight.getInfoType();
+                    return type.equals("A") || type.equals("D");
+                });
+//        filteredFlights.peek((key, value) -> {
+//            System.out.println(key + " : " + value);
+//        });
+
 
         // logic ends here
 
