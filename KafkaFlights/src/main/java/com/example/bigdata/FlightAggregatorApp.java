@@ -7,11 +7,13 @@ import com.example.bigdata.model.StateDayAggregation;
 import com.example.bigdata.serde.JsonSerde;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.*;
+import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -52,53 +54,43 @@ public class FlightAggregatorApp {
     private final static String ANOMALIES = "airports-anomalies";
 
     public static void main(String[] args) {
+        String bootstrapServers = args[0];
+        String delayMode = args.length > 1 ? args[1] : "A";
+        System.out.println("Processing in mode " + delayMode);
         Properties config = new Properties();
-        config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, args[0]);
-        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "kafka-flights");
+        config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "kafka-flights-" + delayMode);
         config.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         config.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, TimeExtractor.class);
 
-        final StreamsBuilder builder = new StreamsBuilder();
+        if (delayMode.equals("A")) {
+            config.put(StreamsConfig.BUFFERED_RECORDS_PER_PARTITION_CONFIG, 1);
+            config.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, 1000);
+        }
 
-        // logic goes here
+        final StreamsBuilder builder = new StreamsBuilder();
 
         Serde<FlightRecord> flightSerde = new JsonSerde<>(FlightRecord.class);
         Serde<AirportRecord> airportSerde = new JsonSerde<>(AirportRecord.class);
         Serde<StateDayAggregation> aggSerde = new JsonSerde<>(StateDayAggregation.class);
+        Serde<FlightEventForAggregation> eventSerde = new JsonSerde<>(FlightEventForAggregation.class);
 
-
-        KStream<String, String> airportsRawStream = builder.stream(
-                AIRPORTS_INPUT,
-                Consumed.with(Serdes.String(), Serdes.String())
-        );
-//        airportsRawStream.peek((key, value) -> System.out.println("Airport: " + key));
-
+        KStream<String, String> airportsRawStream = builder.stream(AIRPORTS_INPUT);
         KTable<String, AirportRecord> airportKTable = airportsRawStream
                 .filter((key, value) -> AirportRecord.lineIsCorrect(value))
                 .mapValues(AirportRecord::parseFromLine)
                 .selectKey((oldKey, airport) -> airport.getIata())
                 .toTable(Materialized.with(Serdes.String(), airportSerde));
-//        airportKTable.toStream().peek((key, value) -> System.out.println("Key: " + key + " Value: " + value));
-
 
         KStream<String, String> flightsStream = builder.stream(FLIGHTS_INPUT);
-
         KStream<String, FlightRecord> filteredFlights = flightsStream
                 .filter((key, value) -> FlightRecord.lineIsCorrect(value))
                 .mapValues(FlightRecord::parseFromLogLine);
 
-//        filteredFlights.peek((key, value) -> {System.out.println(key + " : " + value);});
-
-        KStream<String, FlightRecord> keyedFlights = filteredFlights
-                .selectKey((oldKey, flight) -> {
-                    if (flight.getInfoType().equals("D")) {
-                        return flight.getStartAirport();
-                    } else {
-                        return flight.getDestAirport();
-                    }
-                });
-//        keyedFlights.peek((key, value) -> System.out.printf("Key: %s, Value: %s\n", key, value));
+        KStream<String, FlightRecord> keyedFlights = filteredFlights.selectKey((oldKey, flight) ->
+                flight.getInfoType().equals("D") ? flight.getStartAirport() : flight.getDestAirport()
+        );
 
         KStream<String, FlightEventForAggregation> enrichedStream = keyedFlights.join(
                 airportKTable,
@@ -106,6 +98,7 @@ public class FlightAggregatorApp {
                     String state = airport.getState();
                     String dateStr;
                     long delay;
+
                     if (flight.getInfoType().equals("D")) {
                         dateStr = flight.getDepartureTime().split(" ")[0];
                         delay = calculateDelayMinutes(flight.getScheduledDepartureTime(), flight.getDepartureTime());
@@ -118,29 +111,51 @@ public class FlightAggregatorApp {
                 },
                 Joined.with(Serdes.String(), flightSerde, airportSerde)
         );
-//        enrichedStream.peek((key, value) -> System.out.printf("%s: %s\n", key, value));
 
         KStream<String, FlightEventForAggregation> keyedByStateDate = enrichedStream
                 .selectKey((key, flight) -> flight.getState() + "_" + flight.getDate());
 
-        KTable<String, StateDayAggregation> stateDayAggTable = keyedByStateDate
-                .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(FlightEventForAggregation.class)))
-                .aggregate(
-                        StateDayAggregation::new,
-                        (key, value, aggregate) -> aggregate.add(value),
-                        Materialized.with(Serdes.String(), aggSerde)
-                );
-        stateDayAggTable.toStream().peek((key, value) -> System.out.println("Aggregated [" + key + "] = " + value));
+        if (delayMode.equals("C")) {
+            Duration windowSize = Duration.ofMinutes(1);
+            Duration grace = Duration.ofMinutes(5);
 
-        // logic ends here
+            KTable<Windowed<String>, StateDayAggregation> windowedAgg = keyedByStateDate
+                    .groupByKey(Grouped.with(Serdes.String(), eventSerde))
+                    .windowedBy(TimeWindows.ofSizeAndGrace(windowSize, grace))
+                    .aggregate(
+                            StateDayAggregation::new,
+                            (key, value, agg) -> agg.add(value),
+                            Materialized.with(Serdes.String(), aggSerde)
 
+                    );
+
+            windowedAgg.toStream().peek((key, value) ->
+                    System.out.println("Final Aggregated [" + key.key() + " @ " + key.window().startTime() + "] = " + value)
+            );
+
+        } else {
+            KTable<String, StateDayAggregation> stateDayAggTable = keyedByStateDate
+                    .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(FlightEventForAggregation.class)))
+                    .aggregate(
+                            StateDayAggregation::new,
+                            (key, value, aggregate) -> aggregate.add(value),
+                            Materialized
+                                    .<String, StateDayAggregation, KeyValueStore<Bytes, byte[]>>as("agg-store")
+                                    .withKeySerde(Serdes.String())
+                                    .withValueSerde(aggSerde)
+                                    .withCachingDisabled()
+                    );
+
+
+            stateDayAggTable.toStream().peek((key, value) ->
+                    System.out.println("Aggregated [" + key + "] = " + value)
+            );
+        }
 
         final Topology topology = builder.build();
         System.out.println(topology.describe());
 
         KafkaStreams streams = new KafkaStreams(topology, config);
-
-
         final CountDownLatch latch = new CountDownLatch(1);
 
         Runtime.getRuntime().addShutdownHook(new Thread("streams-shutdown-hook") {
