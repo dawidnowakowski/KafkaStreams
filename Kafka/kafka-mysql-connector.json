@@ -1,0 +1,20 @@
+{
+  "name": "kafka-to-mysql-task",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "flights-etl",
+    "connection.url": "jdbc:mysql://mysql:3306/streamdb",
+    "connection.user": "streamuser",
+    "connection.password": "stream",
+    "table.name.format": "data_sink",
+    "auto.create": "true",
+    "auto.evolve": "true",
+    "delete.enabled": "false",
+    "pk.mode": "record_key",
+    "pk.fields": "key",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "true"
+  }
+}

@@ -1,9 +1,7 @@
 package com.example.bigdata;
 
-import com.example.bigdata.model.AirportRecord;
-import com.example.bigdata.model.FlightEventForAggregation;
-import com.example.bigdata.model.FlightRecord;
-import com.example.bigdata.model.StateDayAggregation;
+import com.example.bigdata.model.*;
+import com.example.bigdata.serde.ConnectJsonSerializer;
 import com.example.bigdata.serde.JsonSerde;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
@@ -73,6 +71,7 @@ public class FlightAggregatorApp {
         Serde<AirportRecord> airportSerde = new JsonSerde<>(AirportRecord.class);
         Serde<StateDayAggregation> aggSerde = new JsonSerde<>(StateDayAggregation.class);
         Serde<FlightEventForAggregation> eventSerde = new JsonSerde<>(FlightEventForAggregation.class);
+        final ConnectJsonSerializer connectJsonSerializer = new ConnectJsonSerializer();
 
         KStream<String, String> airportsRawStream = builder.stream(AIRPORTS_INPUT);
         KTable<String, AirportRecord> airportKTable = airportsRawStream
@@ -132,7 +131,8 @@ public class FlightAggregatorApp {
             windowedAgg.toStream()
                     .map((windowedKey, value) -> new KeyValue<>(windowedKey.key(), value))
                     .peek((key, value) -> System.out.printf("Final Aggregated [%s] = %s\n", key, value))
-                    .to(DAY_STATE_AGG, Produced.with(Serdes.String(), aggSerde));
+                    .mapValues(value -> connectJsonSerializer.serialize(DAY_STATE_AGG, value))
+                    .to(DAY_STATE_AGG, Produced.with(Serdes.String(), Serdes.ByteArray()));
         } else {
             KTable<String, StateDayAggregation> stateDayAggTable = keyedByStateDate
                     .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(FlightEventForAggregation.class)))
@@ -147,10 +147,9 @@ public class FlightAggregatorApp {
                     );
 
             stateDayAggTable.toStream()
-                    .peek((key, value) ->
-                            System.out.println("Aggregated [" + key + "] = " + value)
-                    )
-                    .to(DAY_STATE_AGG, Produced.with(Serdes.String(), aggSerde));
+                    .peek((key, value) -> System.out.println("Aggregated [" + key + "] = " + value))
+                    .mapValues(value -> connectJsonSerializer.serialize(DAY_STATE_AGG, value))
+                    .to(DAY_STATE_AGG, Produced.with(Serdes.String(), Serdes.ByteArray()));
         }
 
 

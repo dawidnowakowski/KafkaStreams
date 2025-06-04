@@ -119,3 +119,45 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker-1:19092,broker-2:19092,broker-3:19092
       KAFKA_CLUSTERS_0_PROPERTIES_SECURITYPROTOCOL: PLAINTEXT
     restart: unless-stopped
+    
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.0
+    container_name: kafka-connect
+    depends_on:
+      - broker-1
+      - broker-2
+      - broker-3
+      - mysql
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: broker-1:19092,broker-2:19092,broker-3:19092
+      CONNECT_REST_PORT: 8083
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_GROUP_ID: kafka-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+      CONNECT_LOG4J_LOGGERS: org.reflections=ERROR
+    volumes:
+      - ./kafka-connect-jdbc-10.7.0.jar:/etc/kafka-connect/jars/kafka-connect-jdbc-10.7.0.jar
+      - ./mysql-connector-j-8.0.33.jar:/etc/kafka-connect/jars/mysql-connector-j-8.0.33.jar
+
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    ports:
+      - "6033:3306"
+    environment:
+      MYSQL_DATABASE: streamdb
+      MYSQL_USER: streamuser
+      MYSQL_PASSWORD: stream
+      MYSQL_ROOT_PASSWORD: root
+    restart: unless-stopped
+
