@@ -116,24 +116,25 @@ public class FlightAggregatorApp {
                 .selectKey((key, flight) -> flight.getState() + "_" + flight.getDate());
 
         if (delayMode.equals("C")) {
-            Duration windowSize = Duration.ofMinutes(1);
+            Duration oneDay = Duration.ofDays(1);
             Duration grace = Duration.ofMinutes(5);
+
+            TimeWindows dailyWindows = TimeWindows.ofSizeAndGrace(oneDay, grace);
 
             KTable<Windowed<String>, StateDayAggregation> windowedAgg = keyedByStateDate
                     .groupByKey(Grouped.with(Serdes.String(), eventSerde))
-                    .windowedBy(TimeWindows.ofSizeAndGrace(windowSize, grace))
+                    .windowedBy(dailyWindows)
                     .aggregate(
                             StateDayAggregation::new,
-                            (key, value, agg) -> agg.add(value),
+                            (key, value, aggregate) -> aggregate.add(value),
                             Materialized.with(Serdes.String(), aggSerde)
-
                     );
 
             windowedAgg.toStream().peek((key, value) ->
-                    System.out.println("Final Aggregated [" + key.key() + " @ " + key.window().startTime() + "] = " + value)
+                    System.out.printf("Final Aggregated [%s @ %s] = %s\n", key.key(), key.window().startTime(), value)
             );
-
-        } else {
+        }
+        else {
             KTable<String, StateDayAggregation> stateDayAggTable = keyedByStateDate
                     .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(FlightEventForAggregation.class)))
                     .aggregate(

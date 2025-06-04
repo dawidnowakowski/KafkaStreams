@@ -57,7 +57,8 @@ services:
       - ./load-airports.sh:/home/appuser/load-airports.sh
       - ./load-flights.sh:/home/appuser/load-flights.sh
       - ./kafka-flights.jar:/home/appuser/kafka-flights.jar
-      - ./run-processing.sh:/home/appuser/run-processing.sh
+      - ./A.sh:/home/appuser/A.sh
+      - ./C.sh:/home/appuser/C.sh
       - ./install-libs.sh:/home/appuser/install-libs.sh
     depends_on:
       - controller-1
