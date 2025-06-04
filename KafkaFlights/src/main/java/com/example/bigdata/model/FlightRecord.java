@@ -64,7 +64,27 @@ public class FlightRecord implements Serializable {
         if (lower.startsWith("airline")) return false;
 
         String[] parts = line.split(",");
-        return parts.length >= 24;
+        if (parts.length < 25) return false;
+
+        String schedDep = parts[5];
+        String schedArr = parts[8];
+        String dep = parts[9];
+        String arr = parts[13];
+        String infoType = parts[24];
+
+        if (isNullOrBlankOrQuotedEmpty(schedDep)) return false;
+        if (isNullOrBlankOrQuotedEmpty(schedArr)) return false;
+
+        if (infoType.equals("D") && isNullOrBlankOrQuotedEmpty(dep)) return false;
+        if (infoType.equals("A") && isNullOrBlankOrQuotedEmpty(arr)) return false;
+
+        if (!infoType.equals("A") && !infoType.equals("D")) return false;
+
+        return true;
+    }
+
+    private static boolean isNullOrBlankOrQuotedEmpty(String input) {
+        return input == null || input.isBlank() || input.equals("\"\"");
     }
 
     @JsonIgnore

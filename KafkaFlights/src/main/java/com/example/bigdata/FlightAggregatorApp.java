@@ -3,6 +3,7 @@ package com.example.bigdata;
 import com.example.bigdata.model.AirportRecord;
 import com.example.bigdata.model.FlightEventForAggregation;
 import com.example.bigdata.model.FlightRecord;
+import com.example.bigdata.model.StateDayAggregation;
 import com.example.bigdata.serde.JsonSerde;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
@@ -14,6 +15,7 @@ import org.apache.kafka.streams.kstream.*;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -63,7 +65,7 @@ public class FlightAggregatorApp {
 
         Serde<FlightRecord> flightSerde = new JsonSerde<>(FlightRecord.class);
         Serde<AirportRecord> airportSerde = new JsonSerde<>(AirportRecord.class);
-
+        Serde<StateDayAggregation> aggSerde = new JsonSerde<>(StateDayAggregation.class);
 
 
         KStream<String, String> airportsRawStream = builder.stream(
@@ -84,11 +86,8 @@ public class FlightAggregatorApp {
 
         KStream<String, FlightRecord> filteredFlights = flightsStream
                 .filter((key, value) -> FlightRecord.lineIsCorrect(value))
-                .mapValues(FlightRecord::parseFromLogLine)
-                .filter((key, flight) -> {
-                    String type = flight.getInfoType();
-                    return type.equals("A") || type.equals("D");
-                });
+                .mapValues(FlightRecord::parseFromLogLine);
+
 //        filteredFlights.peek((key, value) -> {System.out.println(key + " : " + value);});
 
         KStream<String, FlightRecord> keyedFlights = filteredFlights
@@ -107,7 +106,6 @@ public class FlightAggregatorApp {
                     String state = airport.getState();
                     String dateStr;
                     long delay;
-
                     if (flight.getInfoType().equals("D")) {
                         dateStr = flight.getDepartureTime().split(" ")[0];
                         delay = calculateDelayMinutes(flight.getScheduledDepartureTime(), flight.getDepartureTime());
@@ -120,9 +118,19 @@ public class FlightAggregatorApp {
                 },
                 Joined.with(Serdes.String(), flightSerde, airportSerde)
         );
+//        enrichedStream.peek((key, value) -> System.out.printf("%s: %s\n", key, value));
 
-        enrichedStream.peek((key, value) -> System.out.printf("%s: %s\n", key, value));
+        KStream<String, FlightEventForAggregation> keyedByStateDate = enrichedStream
+                .selectKey((key, flight) -> flight.getState() + "_" + flight.getDate());
 
+        KTable<String, StateDayAggregation> stateDayAggTable = keyedByStateDate
+                .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(FlightEventForAggregation.class)))
+                .aggregate(
+                        StateDayAggregation::new,
+                        (key, value, aggregate) -> aggregate.add(value),
+                        Materialized.with(Serdes.String(), aggSerde)
+                );
+        stateDayAggTable.toStream().peek((key, value) -> System.out.println("Aggregated [" + key + "] = " + value));
 
         // logic ends here
 
@@ -154,14 +162,32 @@ public class FlightAggregatorApp {
 
     private static long calculateDelayMinutes(String scheduled, String actual) {
         try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-            LocalDateTime sched = LocalDateTime.parse(scheduled, formatter);
-            LocalDateTime act = LocalDateTime.parse(actual, formatter);
-            long diff = Duration.between(sched, act).toMinutes();
+            LocalDateTime schedTime = parseFlexibleDateTime(scheduled);
+            LocalDateTime actualTime = parseFlexibleDateTime(actual);
+            if (schedTime == null || actualTime == null) return 0;
+            long diff = Duration.between(schedTime, actualTime).toMinutes();
             return Math.max(0, diff);
         } catch (Exception e) {
             return 0;
         }
     }
+
+    public static LocalDateTime parseFlexibleDateTime(String input) {
+        if (input == null || input.isBlank() || input.equals("\"\"")) {
+            return null;
+        }
+
+        try {
+            if (input.contains("T")) {
+                return OffsetDateTime.parse(input).toLocalDateTime();
+            } else {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                return LocalDateTime.parse(input, formatter);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
 
 }
