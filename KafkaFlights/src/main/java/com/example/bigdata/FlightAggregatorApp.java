@@ -74,6 +74,8 @@ public class FlightAggregatorApp {
         Serde<FlightEventForAggregation> eventSerde = new JsonSerde<>(FlightEventForAggregation.class);
         final ConnectJsonSerializer connectJsonSerializer = new ConnectJsonSerializer();
 
+
+        // pobieranie danych o lotniskach, mapowanie na obiekt, dodawanie klucza (potrzebny do joina) i insert do KTable.
         KStream<String, String> airportsRawStream = builder.stream(AIRPORTS_INPUT);
         KTable<String, AirportRecord> airportKTable = airportsRawStream
                 .filter((key, value) -> AirportRecord.lineIsCorrect(value))
@@ -81,15 +83,21 @@ public class FlightAggregatorApp {
                 .selectKey((oldKey, airport) -> airport.getIata())
                 .toTable(Materialized.with(Serdes.String(), airportSerde));
 
+        // pobieranie danych o lotach, filtrowanie poprawnych rekordów i mapowanie na odpowiedni obiekt,
         KStream<String, String> flightsStream = builder.stream(FLIGHTS_INPUT);
         KStream<String, FlightRecord> filteredFlights = flightsStream
                 .filter((key, value) -> FlightRecord.lineIsCorrect(value))
                 .mapValues(FlightRecord::parseFromLogLine);
 
+
+        // dodawanie klucza do każdego lotu w zależności od tego, czy wyleciał, czy przyleciał
         KStream<String, FlightRecord> keyedFlights = filteredFlights.selectKey((oldKey, flight) ->
                 flight.getInfoType().equals("D") ? flight.getStartAirport() : flight.getDestAirport()
         );
 
+        // join na tabeli o lotach i strumieniu z lotami,
+        // z każdego lotu wydobywamy potrzebne informacje i łączymy je z informacjami o lotnisku,
+        // z lotniska pobieramy informacje o stanie a z lotu o opóźnieniu, typie opóźnienia i typie zdarzenia (wylot/przylot)
         KStream<String, FlightEventForAggregation> enrichedStream = keyedFlights.join(
                 airportKTable,
                 (flight, airport) -> {
@@ -110,9 +118,11 @@ public class FlightAggregatorApp {
                 Joined.with(Serdes.String(), flightSerde, airportSerde)
         );
 
+        // dodajemy klucz do strumienia
         KStream<String, FlightEventForAggregation> keyedByStateDate = enrichedStream
                 .selectKey((key, flight) -> flight.getState() + "_" + flight.getDate());
 
+        // agregacja typu C
         if (delayMode.equals("C")) {
             Duration oneDay = Duration.ofDays(1);
             Duration grace = Duration.ofMinutes(5);
@@ -127,14 +137,20 @@ public class FlightAggregatorApp {
                             (key, value, aggregate) -> aggregate.add(value),
                             Materialized.with(Serdes.String(), aggSerde)
                     )
+                    // Używam suppress untilWindowCloses, co powoduje, że dane są umieszczane w temacie kafki dopiero wtedy, gdy okno się zamknie
                     .suppress(Suppressed.untilWindowCloses(Suppressed.BufferConfig.unbounded()));
 
             windowedAgg.toStream()
                     .map((windowedKey, value) -> new KeyValue<>(windowedKey.key(), value))
                     .peek((key, value) -> System.out.printf("Final Aggregated [%s] = %s\n", key, value))
+                    // serializacja na json, który również dodaje scheme - element potrzebny dla kafka-connect, aby ujście było tabelą
                     .mapValues(value -> connectJsonSerializer.serialize(DAY_STATE_AGG, value))
                     .to(DAY_STATE_AGG, Produced.with(Serdes.String(), Serdes.ByteArray()));
-        } else {
+        }
+
+        // agregacja typu A
+        // w sumie to to samo co C tylko bez suppressed. Aby wymusić umieszczanie zdarzeń od razu w wynikowym temacie należy zmienić rozmiar bufora na jak najmniejszy (na górze pliku)
+        else {
             Duration oneDay = Duration.ofDays(1);
             Duration grace = Duration.ofMinutes(5);
 
