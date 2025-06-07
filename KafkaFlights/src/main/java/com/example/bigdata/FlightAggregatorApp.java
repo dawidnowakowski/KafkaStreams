@@ -46,6 +46,7 @@ public class FlightAggregatorApp {
     private final static String AIRPORTS_INPUT = "airports-input";
     private final static String FLIGHTS_INPUT = "flights-input";
     private final static String DAY_STATE_AGG = "flights-etl";
+    private final static String DAY_STATE_AGG_A = "flights-etl-A";
     private final static String ANOMALIES = "airports-anomalies";
 
     public static void main(String[] args) {
@@ -151,8 +152,8 @@ public class FlightAggregatorApp {
             windowedAgg.toStream()
                     .map((windowedKey, value) -> new KeyValue<>(windowedKey.key(), value))
                     .peek((key, value) -> System.out.printf("Aggregated [%s] = %s\n", key, value))
-                    .mapValues(value -> connectJsonSerializer.serialize(DAY_STATE_AGG, value))
-                    .to(DAY_STATE_AGG, Produced.with(Serdes.String(), Serdes.ByteArray()));
+                    .mapValues(value -> connectJsonSerializer.serialize(DAY_STATE_AGG_A, value))
+                    .to(DAY_STATE_AGG_A, Produced.with(Serdes.String(), Serdes.ByteArray()));
         }
 
 

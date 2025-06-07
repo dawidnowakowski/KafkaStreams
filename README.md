@@ -1,64 +1,180 @@
-1. Włącz Docker'a. Gdy będzie gotowy, przejdź do folderu: \
-cd KafkaStreams/Kafka
+# Kafka Streams - Instrukcja uruchomienia
 
-2. Następnie uruchom: \
+SYTUACJ A MAŁO PRAWDOPODOBNA, ALE - JEŻELI JAKIKOLWIEK SKRYPT .sh NIE DA SIĘ URUCHOMIĆ (INFORMACJA, ŻE PLIK NIE ZNALEZIONY), TO PRAWDOPODOBNIE CHODZI O ZNAKI KOŃCA LINII. WSZYSTKIE POWINNY MIEĆ LF, ALE WINDOWS PŁATA FIGLE I ZAMIENIA NA CRLF. W TAKIEJ SYTUACJI PROSZĘ O PRZEKONWERTOWANIE SOBIE ZNAKU KOŃCA LINI W NOTEPAD++ LUB JAKIMŚ ONLINE KONWERTERZE. PRZEPRASZAM ZA UTRUDNIENIA. W OSTATECZNOŚCI TRZEBA WYKONAĆ POLECENIA ZE SKRYPTÓW RĘCZNIE.
+
+## 1. Uruchom Dockera i otwórz terminal w folderze projektu
+
+## 2. Uruchom kontenery
+
+```bash
 docker compose up -d
+```
 
-3. Poczekaj, aż wszystkie kontenery wstaną
- 
-4. Podłącz się do broker Kafki, najlepiej od razu otwórz trzy terminale, w których to zrobisz \
+Poczekaj, aż wszystkie kontenery zostaną uruchomione.
+
+## 3. Podłącz się do brokera Kafka
+
+Otwórz **dwa terminale** i w każdym z nich wykonaj:
+
+```bash
 docker exec --workdir /home/appuser -it --user root broker-1 bash
+```
 
-5. Na początek upewnij się, że odpowiednie tematy są utworzone, wykonując polecenie: \
-./prepare-kafka-topics.sh \
-(usuwanie nieistniejących tematów spowoduje błędy, zignoruj je)
+## 4. Przygotuj tematy Kafka
 
-6. Pobierz dane przy użyciu skryptu: \
+W terminalu brokera uruchom:
+
+```bash
+./prepare-kafka-topics.sh
+```
+
+>  Błędy związane z usuwaniem nieistniejących tematów można zignorować.
+
+## 5. Pobierz dane
+
+```bash
 ./download-data.sh
+```
 
-7. Kafka streams potrzebuje uruchomić RocksDB, do której brakuje biblioteki, zaisntaluj ją za pomocą:
+## 6. Zainstaluj bibliotekę RocksDB
+
+Kafka Streams wymaga biblioteki RocksDB. Zainstaluj ją:
+
+```bash
 ./install-libs.sh
+```
 
-8. Broker jest teraz gotowy do pracy, ale trzeba przygotować jeszcze ujście, odpal nowy terminal i podłącz się do kontenera z MySQL: \
+## 7. Przygotuj bazę danych (MySQL)
+
+Otwórz nowy terminal i podłącz się do kontenera MySQL:
+
+```bash
 docker exec -it mysql mysql -u streamuser -pstream streamdb
+```
 
-9. Następnie utwórz tabelę, która będzie ujściem dla agregatów typu C: \
-docker exec -it mysql mysql -u streamuser -pstream streamdb
+Następnie wykonaj poniższe zapytania SQL:
 
-CREATE DATABASE IF NOT EXISTS streamdb; \
+```sql
+CREATE DATABASE IF NOT EXISTS streamdb;
 USE streamdb;
 
-CREATE TABLE data_sink ( \
-    `key` VARCHAR(255) NOT NULL, \
-    departures BIGINT NOT NULL, \
-    departureDelays BIGINT NOT NULL, \
-    arrivals BIGINT NOT NULL, \
-    arrivalDelays BIGINT NOT NULL, \
-    PRIMARY KEY (`key`) \
-); 
+CREATE TABLE data_sink (
+    `key` VARCHAR(255) NOT NULL,
+    departures BIGINT NOT NULL,
+    departureDelays BIGINT NOT NULL,
+    arrivals BIGINT NOT NULL,
+    arrivalDelays BIGINT NOT NULL,
+    PRIMARY KEY (`key`)
+);
+```
 
-10. Aby dane trafiały z tematu Kafki do bazy danych, należy skonfigurować jeszcze kafka-connect, w tym celu wykonaj uruchom nowy terminal i wyślij plik konfiguracyjny do kafka-connect: \
-curl -X POST http://localhost:8083/connectors -H "Content-Type: application/json" --data @kafka-mysql-connector.json \
-Pomimo tego, że kontener Kafka-connect jest uruchomiony, to na początku może odrzucać requesta (Empty reply from server). Należy poczekać jakiś czas (do minuty) i spróbować jeszcze raz \
-Oczekiwany response z kafka-connect to zawartość pliku który wysyłamy. 
+## 8. Skonfiguruj Kafka Connect
 
-11. W teorii wszystko jest już skonfigurowane. Wróc do jednego z terminali brokera i uruchom przetwarzanie:
-./C.sh - dla trybu Complete, w którym wynik agregacji będzie umieszczany w bazie\
-./A.sh - dla trybu Append, dla którego wynik będzie umieszczany w temacie Kafki, ponieważ stosujemy tutaj wyzwalacz natychmiastowy i gdybyśmy umieszczali wynik w bazie to wymagałoby to wielu update'ów, czego chyba chcemy uniknąć\
-(alternatywnie) java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 A \
-(alternatywnie) java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 C
+W nowym terminalu wyślij konfigurację connectora:
 
-12. Przełącz się do innego terminala brokera i załaduj dane do tematów Kafki, najpierw informacje o lotniskach, które musimy odczytać przed rozpoczęciem rejestrowania zdarzeń \
-./load-airports.sh 
+```bash
+curl -X POST http://localhost:8083/connectors -H "Content-Type: application/json" --data @kafka-mysql-connector.json
+```
 
-13. Zanim załadujesz dane o lotach poczekaj, aż poprzedni krok się zakończy. Następnie uruchom generowanie zdarzeń o lotach: \
-./load-flights.sh 
+> Kontener Kafka Connect może początkowo odrzucać żądanie (np. "Empty reply from server"). Poczekaj do minuty i spróbuj ponownie.  
+> Oczekiwana odpowiedź to zawartość pliku `kafka-mysql-connector.json`.
 
-14. Aby podejrzeć wyniki agregacji typu C uruchom w kontenerze, w którym jesteś podłączony do bazy danych polecenie: \
+## 9. Uruchom przetwarzanie Kafka Streams
+
+W jednym z terminali brokera uruchom aplikację przetwarzającą dane:
+
+### Tryb **Complete** – wynik trafia do bazy danych
+
+```bash
+./C.sh
+```
+
+### Tryb **Append** – wynik trafia do tematu Kafka
+
+```bash
+./A.sh
+```
+
+#### Alternatywnie można użyć bezpośrednio komendy Java:
+
+```bash
+java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 A
+```
+
+lub
+
+```bash
+java -cp /opt/kafka/libs/*:kafka-flights.jar com.example.bigdata.FlightAggregatorApp broker-1:19092 C
+```
+
+## 10. Załaduj dane do tematów Kafka
+
+### a) Lotniska:
+
+```bash
+./load-airports.sh
+```
+
+### b) Loty (załaduj dopiero po zakończeniu poprzedniego kroku):
+
+```bash
+./load-flights.sh
+```
+
+## 11C. Sprawdź wyniki agregacji (typ C)
+
+W kontenerze MySQL wykonaj zapytanie:
+
+```sql
 SELECT * FROM data_sink;
+```
 
-15. 
+## 11A. Sprawdź wyniki agregacji (typ A)
+Otwórz nowy terminal i podłącz się do kontenera brokera, a następnie uruchom nasłuch tematu:
+```bash
+   docker exec --workdir /opt/kafka/bin -it --user root broker-1 bash
+   ./kafka-console-consumer.sh --bootstrap-server broker-1:19092 --topic flights-etl-A --from-beginning
+```
+Żeby dane ładnie się wyświetlały zamiast raw JSON użyj:
+```bash
+./kafka-console-consumer.sh \
+  --bootstrap-server broker-1:19092 \
+  --topic flights-etl-A \
+  --from-beginning \
+  --property print.key=true \
+  --property key.separator=" | " \
+  --property print.value=true \
+  | awk -F ' \\| ' '{ key=$1; val=$2; for(i=3;i<=NF;i++){val=val" | "$i} print key "|" val }' \
+  | while IFS='|' read -r key json; do
+      payload=$(echo "$json" | jq -c '.payload' 2>/dev/null)
+      if [ -n "$payload" ]; then
+        echo "$key | $payload"
+      else
+        echo "$key | [invalid json]"
+      fi
+    done
 
+```
 
+## Dodatkowe informacje:
+Jeżeli chcesz uruchomić przetwarzanie ponownie (zmienić tryb przetwarzania na A lub C), musisz najpierw zrestartować środowisko.
 
+Najpierw przerwij nadawanie zdarzeń o lotach poprzez CTRL+C, przerwij również przetwarzanie używając CTRL+C (Dla trybu A terminal może nie reagować, jeżeli spamowanie CTRL-C nic nie da, to trzeba będzie przejść instrukcje od nowa) 
+
+Jeżeli udało ci się przerwać przetwarzanie, to uruchom skrypt:
+```bash
+./prepare-kafka-topics.sh
+```
+
+Następnie (o ile jest potrzeba) wyczyść tabelę wynikową:
+```sql
+TRUNCATE TABLE data_sink;
+```
+
+W teorii możesz wrócić do punktu 9. i uruchomić przetwarzanie od nowa. Jeżeli wystąpi jakiś problem to zalecam przejście instrukcji od nowa.
+
+Raczej nie będzie potrzeby, ale do usunięcia konfiguracji Kafka-connect użyj: 
+```bash
+curl -X DELETE http://localhost:8083/connectors/kafka-to-mysql-task
+```
 

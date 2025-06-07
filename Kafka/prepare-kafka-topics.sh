@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TOPICS=("flights-input" "airports-input" "flights-etl" "airports-anomalies")
+TOPICS=("flights-input" "airports-input" "flights-etl" "flights-etl-A" "airports-anomalies")
 
 echo "Deleting (existing) topics"
 for topic in "${TOPICS[@]}"; do
