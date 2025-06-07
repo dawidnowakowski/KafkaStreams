@@ -134,20 +134,23 @@ public class FlightAggregatorApp {
                     .mapValues(value -> connectJsonSerializer.serialize(DAY_STATE_AGG, value))
                     .to(DAY_STATE_AGG, Produced.with(Serdes.String(), Serdes.ByteArray()));
         } else {
-            KTable<String, StateDayAggregation> stateDayAggTable = keyedByStateDate
-                    .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(FlightEventForAggregation.class)))
+            Duration oneDay = Duration.ofDays(1);
+            Duration grace = Duration.ofMinutes(5);
+
+            TimeWindows dailyWindows = TimeWindows.ofSizeAndGrace(oneDay, grace);
+
+            KTable<Windowed<String>, StateDayAggregation> windowedAgg = keyedByStateDate
+                    .groupByKey(Grouped.with(Serdes.String(), eventSerde))
+                    .windowedBy(dailyWindows)
                     .aggregate(
                             StateDayAggregation::new,
                             (key, value, aggregate) -> aggregate.add(value),
-                            Materialized
-                                    .<String, StateDayAggregation, KeyValueStore<Bytes, byte[]>>as("agg-store")
-                                    .withKeySerde(Serdes.String())
-                                    .withValueSerde(aggSerde)
-                                    .withCachingDisabled()
+                            Materialized.with(Serdes.String(), aggSerde)
                     );
 
-            stateDayAggTable.toStream()
-                    .peek((key, value) -> System.out.println("Aggregated [" + key + "] = " + value))
+            windowedAgg.toStream()
+                    .map((windowedKey, value) -> new KeyValue<>(windowedKey.key(), value))
+                    .peek((key, value) -> System.out.printf("Aggregated [%s] = %s\n", key, value))
                     .mapValues(value -> connectJsonSerializer.serialize(DAY_STATE_AGG, value))
                     .to(DAY_STATE_AGG, Produced.with(Serdes.String(), Serdes.ByteArray()));
         }
